@@ -1,23 +1,40 @@
 package confluence
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceAttachment() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceAttachmentCreate,
-		Read:   resourceAttachmentRead,
-		Update: resourceAttachmentUpdate,
-		Delete: resourceAttachmentDelete,
+		Create:        resourceAttachmentCreate,
+		Read:          resourceAttachmentRead,
+		Update:        resourceAttachmentUpdate,
+		Delete:        resourceAttachmentDelete,
+		CustomizeDiff: resourceAttachmentCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
 
 		Schema: map[string]*schema.Schema{
 			"data": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: []string{"data", "file_path"},
+			},
+			"file_path": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: []string{"data", "file_path"},
+			},
+			"file_sha256": {
 				Type:     schema.TypeString,
-				Required: true,
+				Computed: true,
 			},
 			"title": {
 				Type:     schema.TypeString,
@@ -32,20 +49,45 @@ func resourceAttachment() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"page": {
+			"page_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 		},
 	}
 }
 
+func resourceAttachmentCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if !d.NewValueKnown("data") || !d.NewValueKnown("file_path") {
+		return d.SetNewComputed("file_sha256")
+	}
+	data := []byte(d.Get("data").(string))
+	if path := d.Get("file_path").(string); path != "" {
+		var err error
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read attachment file %q: %w", path, err)
+		}
+	}
+	return d.SetNew("file_sha256", attachmentSHA256(data))
+}
+
 func resourceAttachmentCreate(d *schema.ResourceData, m interface{}) error {
 	client := m.(*Client)
 	attachmentRequest := attachmentFromResourceData(d)
-	pageId := d.Get("page").(string)
-	data := d.Get("data").(string)
-	attachmentResponse, err := client.CreateAttachment(attachmentRequest, data, pageId)
+	pageID := d.Get("page_id").(string)
+	var attachmentResponse *Attachment
+	var err error
+	if d.Get("file_path").(string) != "" {
+		var data []byte
+		data, err = readAttachmentFile(d)
+		if err == nil {
+			attachmentResponse, err = client.CreateFileAttachment(attachmentRequest, data, pageID)
+		}
+	} else {
+		attachmentResponse, err = client.CreateAttachment(attachmentRequest, d.Get("data").(string), pageID)
+	}
 	if err != nil {
 		return err
 	}
@@ -56,30 +98,43 @@ func resourceAttachmentCreate(d *schema.ResourceData, m interface{}) error {
 func resourceAttachmentRead(d *schema.ResourceData, m interface{}) error {
 	client := m.(*Client)
 	attachmentResponse, err := client.GetAttachment(d.Id())
-	if err != nil {
+	if isNotFound(err) {
 		d.SetId("")
-		return err
+		return nil
 	}
-	attachmentData, err := client.GetAttachmentBody(attachmentResponse)
-	if err != nil {
-		d.SetId("")
-		return err
-	}
-	err = d.Set("data", attachmentData)
 	if err != nil {
 		return err
 	}
-	return updateResourceDataFromAttachment(d, attachmentResponse, client)
+	if d.Get("file_path").(string) == "" {
+		attachmentData, err := client.GetAttachmentBody(attachmentResponse)
+		if err != nil {
+			return err
+		}
+		if err := d.Set("data", attachmentData); err != nil {
+			return err
+		}
+		if err := d.Set("file_sha256", attachmentSHA256([]byte(attachmentData))); err != nil {
+			return err
+		}
+	}
+	return updateResourceDataFromAttachment(d, attachmentResponse)
 }
 
 func resourceAttachmentUpdate(d *schema.ResourceData, m interface{}) error {
 	client := m.(*Client)
 	attachmentRequest := attachmentFromResourceData(d)
-	pageId := d.Get("page").(string)
-	data := d.Get("data").(string)
-	_, err := client.UpdateAttachment(attachmentRequest, data, pageId)
+	pageID := d.Get("page_id").(string)
+	var err error
+	if d.Get("file_path").(string) != "" {
+		var data []byte
+		data, err = readAttachmentFile(d)
+		if err == nil {
+			_, err = client.UpdateFileAttachment(attachmentRequest, data, pageID)
+		}
+	} else {
+		_, err = client.UpdateAttachment(attachmentRequest, d.Get("data").(string), pageID)
+	}
 	if err != nil {
-		d.SetId("")
 		return err
 	}
 	return resourceAttachmentRead(d, m)
@@ -87,8 +142,7 @@ func resourceAttachmentUpdate(d *schema.ResourceData, m interface{}) error {
 
 func resourceAttachmentDelete(d *schema.ResourceData, m interface{}) error {
 	client := m.(*Client)
-	pageId := d.Get("page").(string)
-	err := client.DeleteAttachment(d.Id(), pageId)
+	err := client.DeleteAttachment(d.Id())
 	if err != nil {
 		return err
 	}
@@ -112,12 +166,23 @@ func attachmentFromResourceData(d *schema.ResourceData) *Attachment {
 	return result
 }
 
-func updateResourceDataFromAttachment(d *schema.ResourceData, attachment *Attachment, client *Client) error {
+func updateResourceDataFromAttachment(d *schema.ResourceData, attachment *Attachment) error {
 	d.SetId(attachment.Id)
+	mediaType := attachment.MediaType
+	if mediaType == "" && attachment.Metadata != nil {
+		mediaType = attachment.Metadata.MediaType
+	}
+	version := 0
+	if attachment.Version != nil {
+		version = attachment.Version.Number
+	}
 	m := map[string]interface{}{
 		"title":      attachment.Title,
-		"version":    attachment.Version.Number,
-		"media_type": attachment.Metadata.MediaType,
+		"version":    version,
+		"media_type": mediaType,
+	}
+	if attachment.PageID != "" {
+		m["page_id"] = attachment.PageID
 	}
 	for k, v := range m {
 		err := d.Set(k, v)
@@ -126,4 +191,21 @@ func updateResourceDataFromAttachment(d *schema.ResourceData, attachment *Attach
 		}
 	}
 	return nil
+}
+
+func readAttachmentFile(d *schema.ResourceData) ([]byte, error) {
+	path := d.Get("file_path").(string)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read attachment file %q: %w", path, err)
+	}
+	if actual := attachmentSHA256(data); actual != d.Get("file_sha256").(string) {
+		return nil, fmt.Errorf("attachment file %q changed since its SHA-256 was calculated", path)
+	}
+	return data, nil
+}
+
+func attachmentSHA256(data []byte) string {
+	checksum := sha256.Sum256(data)
+	return hex.EncodeToString(checksum[:])
 }

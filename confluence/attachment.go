@@ -3,6 +3,7 @@ package confluence
 import (
 	"errors"
 	"fmt"
+	"net/url"
 )
 
 type AttachmentResults struct {
@@ -11,12 +12,15 @@ type AttachmentResults struct {
 
 // Attachment is a primary resource in Confluence
 type Attachment struct {
-	Id       string           `json:"id,omitempty"`
-	Metadata *Metadata        `json:"metadata,omitempty"`
-	Title    string           `json:"title,omitempty"` // filename
-	Type     string           `json:"type,omitempty"`  // always "attachment"
-	Version  *Version         `json:"version,omitempty"`
-	Links    *AttachmentLinks `json:"_links,omitempty"`
+	Id           string           `json:"id,omitempty"`
+	Metadata     *Metadata        `json:"metadata,omitempty"`
+	MediaType    string           `json:"mediaType,omitempty"`
+	Title        string           `json:"title,omitempty"` // filename
+	Type         string           `json:"type,omitempty"`  // always "attachment"
+	Version      *Version         `json:"version,omitempty"`
+	Links        *AttachmentLinks `json:"_links,omitempty"`
+	DownloadLink string           `json:"downloadLink,omitempty"`
+	PageID       string           `json:"pageId,omitempty"`
 }
 
 // Metadata is part of an Attachment
@@ -57,7 +61,7 @@ func (c *Client) UpdateAttachment(attachment *Attachment, data, pageId string) (
 
 func (c *Client) GetAttachment(id string) (*Attachment, error) {
 	var response Attachment
-	path := fmt.Sprintf("/rest/api/content/%s?expand=version", id)
+	path := fmt.Sprintf("/api/v2/attachments/%s", url.PathEscape(id))
 	if err := c.Get(path, &response); err != nil {
 		return nil, err
 	}
@@ -65,15 +69,19 @@ func (c *Client) GetAttachment(id string) (*Attachment, error) {
 }
 
 func (c *Client) GetAttachmentBody(attachment *Attachment) (string, error) {
-	result, err := c.GetString(attachment.Links.Download)
+	path := attachment.DownloadLink
+	if path == "" && attachment.Links != nil {
+		path = attachment.Links.Download
+	}
+	result, err := c.GetString(path)
 	if err != nil {
 		return "", err
 	}
 	return result, nil
 }
 
-func (c *Client) DeleteAttachment(id, pageId string) error {
-	path := fmt.Sprintf("/rest/api/content/%s", id)
+func (c *Client) DeleteAttachment(id string) error {
+	path := fmt.Sprintf("/api/v2/attachments/%s", url.PathEscape(id))
 	if err := c.Delete(path); err != nil {
 		return err
 	}

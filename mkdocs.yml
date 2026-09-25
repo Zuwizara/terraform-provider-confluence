@@ -1,9 +1,11 @@
 site_name: "Terraform Provider: Confluence"
-site_url: https://chesshacker.github.io/terraform-provider-confluence/
-repo_url: https://github.com/chesshacker/terraform-provider-confluence
+site_url: https://zuwizara.github.io/terraform-provider-confluence/
+repo_url: https://github.com/zuwizara/terraform-provider-confluence
 nav:
 - Getting Started: index.md
+- Data Sources:
+  - confluence_space: data-sources/confluence_space.md
 - Resources:
   - confluence_attachment: resources/confluence_attachment.md
-  - confluence_content: resources/confluence_content.md
+  - confluence_page: resources/confluence_page.md
 theme: readthedocs

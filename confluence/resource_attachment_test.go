@@ -2,6 +2,7 @@ package confluence
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -34,14 +35,20 @@ func TestAccConfluenceAttachment_Created(t *testing.T) {
 func testAccCheckConfluenceAttachmentConfigRequired(rName string) string {
 	time.Sleep(time.Second)
 	return fmt.Sprintf(`
-resource confluence_content "default" {
-	title = "%s"
-	body  = "Original value"
+data "confluence_space" "test" {
+  key = %q
 }
-resource confluence_attachment "default" {
+
+resource "confluence_page" "default" {
+  space_id = data.confluence_space.test.id
+  title    = %q
+  body     = "Original value"
+}
+
+resource "confluence_attachment" "default" {
   title = "file.txt"
-	data  = "%s"
-	page = confluence_content.default.id
+  data  = %q
+  page_id = confluence_page.default.id
 }
-`, rName, rName)
+`, os.Getenv("CONFLUENCE_SPACE"), rName, rName)
 }

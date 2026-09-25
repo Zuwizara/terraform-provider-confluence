@@ -3,6 +3,7 @@ package confluence
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -14,21 +15,28 @@ import (
 
 // Client provides a connection to the Confluence API
 type Client struct {
-	client    *http.Client
-	baseURL   *url.URL
-	basePath  string
-	publicURL *url.URL
+	client   *http.Client
+	baseURL  *url.URL
+	basePath string
+	apiToken string
 }
 
 // NewClientInput provides information to connect to the Confluence API
 type NewClientInput struct {
-	site             string
-	siteScheme       string
-	publicSite       string
-	publicSiteScheme string
-	context          string
-	user             string
-	token            string
+	cloudID  string
+	apiToken string
+}
+
+// HTTPError is returned for non-successful Confluence API responses.
+type HTTPError struct {
+	StatusCode int
+	Method     string
+	Path       string
+	Message    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("Confluence API returned HTTP %d for %s %s: %s", e.StatusCode, e.Method, e.Path, e.Message)
 }
 
 // ErrorResponse describes why a request failed
@@ -45,32 +53,17 @@ type ErrorResponse struct {
 
 // NewClient returns an authenticated client ready to use
 func NewClient(input *NewClientInput) *Client {
-	publicURL := url.URL{
-		Scheme: input.publicSiteScheme,
-		Host:   input.site,
-	}
-	if input.publicSite != "" {
-		publicURL.Host = input.publicSite
-	}
-
-	basePath := input.context
-
-	// Default to /wiki if using Confluence Cloud`
-	if strings.HasSuffix(input.site, ".atlassian.net") {
-		basePath = "/wiki"
-	}
 	baseURL := url.URL{
-		Scheme: input.siteScheme,
-		Host:   input.site,
+		Scheme: "https",
+		Host:   "api.atlassian.com",
 	}
-	baseURL.User = url.UserPassword(input.user, input.token)
 	return &Client{
 		client: &http.Client{
 			Timeout: time.Second * 10,
 		},
-		baseURL:   &baseURL,
-		basePath:  basePath,
-		publicURL: &publicURL,
+		baseURL:  &baseURL,
+		basePath: fmt.Sprintf("/ex/confluence/%s/wiki", url.PathEscape(input.cloudID)),
+		apiToken: input.apiToken,
 	}
 }
 
@@ -146,7 +139,7 @@ func bytesBufferJSON(bodyBytes *bytes.Buffer, result interface{}) error {
 		return nil
 	}
 	reader := bytes.NewReader(bodyBytes.Bytes())
-	return json.NewDecoder(reader).Decode(&result)
+	return json.NewDecoder(reader).Decode(result)
 }
 
 // formBytesBuffer returns the body as a multi-part form and the content type
@@ -190,30 +183,24 @@ func (c *Client) doRaw(method, path, contentType string, body *bytes.Buffer) (*b
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
 	req.Header.Add("X-Atlassian-Token", "nocheck")
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	expectedStatusCode := map[string]int{
-		"POST":   200,
-		"PUT":    200,
-		"GET":    200,
-		"DELETE": 204,
-	}
-	if resp.StatusCode != expectedStatusCode[method] {
-		var responseBody string
-		var errResponse ErrorResponse
-		err = json.NewDecoder(resp.Body).Decode(&errResponse)
-		if err != nil {
-			responseBody = "Could not decode error"
-		} else {
-			responseBody = errResponse.String()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		responseBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
 		}
-		s := body.String()
-		return nil, fmt.Errorf("%s\n\n%s %s\n%s\n\n%s",
-			resp.Status, method, fullPath, s, responseBody)
+		message := strings.TrimSpace(string(responseBytes))
+		if message == "" {
+			message = http.StatusText(resp.StatusCode)
+		}
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Method: method, Path: fullPath, Message: message}
 	}
 	result := new(bytes.Buffer)
 	_, err = result.ReadFrom(resp.Body)
@@ -221,6 +208,11 @@ func (c *Client) doRaw(method, path, contentType string, body *bytes.Buffer) (*b
 		return nil, err
 	}
 	return result, nil
+}
+
+func isNotFound(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
 }
 
 func (e *ErrorResponse) String() string {
@@ -231,13 +223,4 @@ func (e *ErrorResponse) String() string {
 	}
 	return fmt.Sprintf("%s\nAuthorized: %t\nValid: %t\nSuccessful: %t%s",
 		e.Message, d.Authorized, d.Valid, d.Successful, errorsString)
-}
-
-// URL returns the public URL for a given path
-func (c *Client) URL(path string) string {
-	u, err := c.publicURL.Parse(path)
-	if err != nil {
-		return ""
-	}
-	return u.String()
 }

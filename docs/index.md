@@ -10,9 +10,9 @@ description: |-
 
 # Confluence Provider
 
-The Confluence provider is used to interact with the Confluence. The
-provider needs to be configured with the proper credentials before it can be
-used.
+The Confluence provider is used to interact with Confluence Cloud. Confluence
+Data Center and Confluence Server are not supported. The provider needs to be
+configured with the proper credentials before it can be used.
 
 Use the navigation to the left to read about the available data sources.
 
@@ -20,49 +20,29 @@ Use the navigation to the left to read about the available data sources.
 
 ```hcl
 provider "confluence" {
-  site  = "my-site.atlassian.net"
-  user  = "my-user"
-  token = "my-token"
+	cloud_id = "00000000-0000-0000-0000-000000000000"
+	api_token = var.confluence_api_token
 }
 
-resource confluence_content "default" {
-  space = "MYSPACE"
-  title = "Example Page"
-  body  = "<p>This page was built with Terraform</p>"
+data "confluence_space" "docs" {
+	key = "MYSPACE"
+}
+
+resource "confluence_page" "default" {
+	space_id = data.confluence_space.docs.id
+	title    = "Example Page"
+	body     = "<p>This page was built with Terraform</p>"
 }
 ```
 
 ## Authentication
 
-Static credentials must be passed to the provider block.
+Use a scoped Atlassian service-account API token. The provider sends it as a
+Bearer token to `https://api.atlassian.com/ex/confluence/{cloud_id}/wiki/api/v2`.
 
 ## Argument Reference
 
-- `site` - (Required) For Confluence Cloud: The site is the name of the site
-  and appears in your wiki URL (https://_my-site.atlassian.net_/wiki/spaces/my-space/).
-  For Confluence Server users this should be the hostname of your Confluence
-  instance that can receive `/rest/api` requests. This can also be set via the
-  `CONFLUENCE_SITE` environment variable.
-
-- `site_schema` - (Optional) Set the schema for connecting to the REST API.
-  Defaults to `https`. This can also be set via the `CONFLUENCE_SITE_SCHEMA`
-  environment variable.
-
-- `public_site` - (Optional) For Confluence Server instances where your
-  Confluence site URL is different than the hostname that serves REST API
-  requests. Defaults to `site` if not set. This can also be set via the
-  `CONFLUENCE_PUBLIC_SITE` environment variable.
-
-- `public_site_schema` - (Optional) Set the schema for generated public URLs.
-  Defaults to `https`. This can also be set via the `CONFLUENCE_PUBLIC_SITE_SCHEMA`
-  environment variable.
-
-- `user` - (Required) For Confluence Cloud the user is your user's email
-  address. For Confluence Server this is the username of the user to login.
-  This can also be set via the `CONFLUENCE_USER` environment variable.
-
-- `token` - (Required) For Confluence Cloud the token is a secret every user
-  can generate. It is similar to a password and should be treated as such. For
-  Confluence Server, this is the password of the user. This can also be set via
-  the `CONFLUENCE_TOKEN` environment variable. For Cloud token details, see
-  [Manage your account](https://id.atlassian.com/manage/api-tokens).
+- `cloud_id` - (Required) Atlassian Cloud ID. It can also be set with
+  `CONFLUENCE_CLOUD_ID`.
+- `api_token` - (Required, Sensitive) Scoped Atlassian service-account token.
+  It can also be set with `CONFLUENCE_API_TOKEN`.

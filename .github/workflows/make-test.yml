@@ -16,9 +16,8 @@ on:
   # schedule:
   #   - cron: '0 13 * * *'
 jobs:
-  # ensure the code builds...
   build:
-    name: Build
+    name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,6 +38,19 @@ jobs:
       - name: Build
         run: |
           go build -v .
+
+      - name: Test
+        run: |
+          go test ./...
+          go vet ./...
+          go mod tidy -diff
+
+      - name: Check GoReleaser configuration
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
 
   generate:
     runs-on: ubuntu-latest

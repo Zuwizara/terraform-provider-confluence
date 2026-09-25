@@ -7,36 +7,42 @@ resource "random_pet" "pets" {
 }
 
 provider "confluence" {
-  site  = var.site
-  user  = var.user
-  token = var.token
+  cloud_id  = var.cloud_id
+  api_token = var.api_token
 }
 
-resource confluence_content "example" {
-  space = var.space
-  title = "My Pets"
+data "confluence_space" "example" {
+  key = var.space
+}
+
+resource "confluence_page" "example" {
+  space_id = data.confluence_space.example.id
+  title    = "My Pets"
   body = templatefile("${path.module}/example.tmpl", {
     pets = [for p in random_pet.pets : title(p.id)]
   })
 }
 
 terraform {
-  required_version = "~> v0.12.0"
+  required_version = ">= 1.0"
   required_providers {
-    random = "~> 2.2"
+    confluence = {
+      source = "zuwizara/confluence"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 2.2"
+    }
   }
 }
 
-variable "site" {
+variable "cloud_id" {
   type = string
 }
 
-variable "user" {
-  type = string
-}
-
-variable "token" {
-  type = string
+variable "api_token" {
+  type      = string
+  sensitive = true
 }
 
 variable "space" {
@@ -44,5 +50,5 @@ variable "space" {
 }
 
 output "example" {
-  value = confluence_content.example
+  value = confluence_page.example
 }

@@ -23,6 +23,9 @@ $(BINARY_NAME):
 testacc:
 	TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout 5m
 
+release-check:
+	scripts/release-check.sh
+
 fmt:
 	gofmt -s -w $(GOFMT_FILES)
 
@@ -41,4 +44,4 @@ uninstall:
 bin/golangci-lint:
 	scripts/get-golangci.sh
 
-.PHONY: all build check clean fmt install test testacc uninstall
+.PHONY: all build check clean fmt install release-check test testacc uninstall

@@ -45,8 +45,9 @@ mkdocs serve
 
 ## Releases
 
-This project hasn't committed to a versioned release yet, but plans to do
-releases in the future.
+Maintainers should follow the checklist in [RELEASING.md](../RELEASING.md).
+Release artifacts are built, checksummed, and signed automatically from a
+version tag.
 
 ## Helpful Resources
 
