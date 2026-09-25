@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.0.1 (2026-09-25)
+
 BREAKING CHANGES:
 
 - This fork is a fresh start and does not migrate state from the original
