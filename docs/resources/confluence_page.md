@@ -26,3 +26,6 @@ resource "confluence_page" "example" {
 Deleting the resource moves the page to the Confluence trash. A trashed page
 is treated as absent from Terraform state. Permanent deletion is intentionally
 not supported.
+
+Use [`confluence_page_property`](confluence_page_property.md) to manage page
+metadata separately, including full-width layout properties.

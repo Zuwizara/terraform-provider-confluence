@@ -26,8 +26,9 @@ func Provider() *schema.Provider {
 			"confluence_space": dataSourceSpace(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"confluence_attachment": resourceAttachment(),
-			"confluence_page":       resourcePage(),
+			"confluence_attachment":    resourceAttachment(),
+			"confluence_page":          resourcePage(),
+			"confluence_page_property": resourcePageProperty(),
 		},
 		ConfigureFunc: providerConfigure,
 	}

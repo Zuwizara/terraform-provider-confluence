@@ -57,6 +57,9 @@ func TestProviderCloudV2Schema(t *testing.T) {
 	if _, ok := provider.ResourcesMap["confluence_page"]; !ok {
 		t.Fatal("confluence_page resource is not registered")
 	}
+	if _, ok := provider.ResourcesMap["confluence_page_property"]; !ok {
+		t.Fatal("confluence_page_property resource is not registered")
+	}
 	if _, ok := provider.ResourcesMap["confluence_content"]; ok {
 		t.Fatal("legacy confluence_content resource must not be registered")
 	}
@@ -80,6 +83,18 @@ func confluenceDestroyHelper(s *terraform.State, client *Client) error {
 	for _, r := range s.RootModule().Resources {
 		id := r.Primary.ID
 		switch r.Type {
+		case "confluence_page_property":
+			pageID, propertyID, err := parsePagePropertyID(id)
+			if err != nil {
+				return err
+			}
+			_, err = client.GetPageProperty(pageID, propertyID)
+			if err == nil {
+				return fmt.Errorf("page property still exists: %s", id)
+			}
+			if !isNotFound(err) {
+				return err
+			}
 		case "confluence_page":
 			page, err := client.GetPage(id)
 			if err == nil && page.Status != "trashed" {
@@ -101,6 +116,14 @@ func confluenceExistsHelper(s *terraform.State, client *Client) error {
 	for _, r := range s.RootModule().Resources {
 		id := r.Primary.ID
 		switch r.Type {
+		case "confluence_page_property":
+			pageID, propertyID, err := parsePagePropertyID(id)
+			if err != nil {
+				return err
+			}
+			if _, err := client.GetPageProperty(pageID, propertyID); err != nil {
+				return err
+			}
 		case "confluence_page":
 			page, err := client.GetPage(id)
 			if err != nil {

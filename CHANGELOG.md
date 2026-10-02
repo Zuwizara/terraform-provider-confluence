@@ -1,5 +1,13 @@
 ## Unreleased
 
+## 0.0.2 (2026-10-02)
+
+FEATURES:
+
+- Added `confluence_page_property` for Cloud page JSON properties, including
+  plain string values, structured JSON, explicit adoption of existing keys,
+  import, and a full-width layout example.
+
 ## 0.0.1 (2026-09-25)
 
 BREAKING CHANGES:

@@ -8,4 +8,5 @@ nav:
 - Resources:
   - confluence_attachment: resources/confluence_attachment.md
   - confluence_page: resources/confluence_page.md
+  - confluence_page_property: resources/confluence_page_property.md
 theme: readthedocs

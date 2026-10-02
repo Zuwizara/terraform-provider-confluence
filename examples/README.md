@@ -1,5 +1,7 @@
 # Examples for the Confluence Terraform Provider
 
+- [Page properties](page_property/README.md): full-width layout and structured JSON metadata.
+
 To successfully run any of these examples, you must provide information to
 access the confluence API. To make that part easier, a template is provided.
 Copy `secrets.template.env` in the root directory of this repository to
